@@ -96,17 +96,25 @@ local function find_external_deps(workspace_root)
 	local external_dir = Path:new(bazel_output_root .. "/" .. "external")
 	if Config.pip_deps_marker ~= nil then
 		local pip_dir = Path:new(external_dir .. "/" .. Config.pip_deps_marker)
-        if Path.exists(pip_dir) then
-            for dir, _ in vim.fs.dir(pip_dir:absolute()) do
-                log.warn(uv.fs_stat(Path:new(pip_dir .. "/" .. dir):absolute()))
-                local dir_path = Path:new(pip_dir .. "/" .. dir):absolute()
-                local stat = uv.fs_stat(dir_path)
-                if stat ~= nil and stat.nlink == 4 then
-                    dir_path = uv.fs_readlink(dir_path)
-                end
-                table.insert(dirs, dir_path)
-            end
-        end
+		if Path.exists(pip_dir) then
+			for dir, _ in vim.fs.dir(pip_dir:absolute()) do
+				log.warn(uv.fs_stat(Path:new(pip_dir .. "/" .. dir):absolute()))
+				local dir_path = Path:new(pip_dir .. "/" .. dir):absolute()
+				local stat = uv.fs_stat(dir_path)
+				if stat ~= nil and stat.nlink == 4 then
+					dir_path = uv.fs_readlink(dir_path)
+				end
+				table.insert(dirs, dir_path)
+			end
+		end
+	else
+		local pip_dir_pattern = "^pip_"
+		for dir, _ in vim.fs.dir(external_dir:absolute()) do
+			if dir:find(pip_dir_pattern) ~= nil then
+				local site_packages_dir = Path:new(external_dir .. "/" .. dir .. "/" .. "site-packages"):absolute()
+				table.insert(dirs, site_packages_dir)
+			end
+		end
 	end
 	return dirs
 end
@@ -120,16 +128,17 @@ function M.find_extra_paths()
 			return
 		end
 		local created, config = get_cached_config(workspace_root)
+
 		if created then
 			local files = find_user_defined_libs(workspace_root)
 			local py_dirs = find_py_dirs(files)
 			local dirs = vim.list_extend(py_dirs, find_external_deps(workspace_root))
 			require("py-bazel.config").update_config(config, dirs)
 		end
-        local config_target = lsp_root
-        if Config.global_pyright_config ~= nil then
-            config_target = Config.global_pyright_config
-        end
+		local config_target = lsp_root
+		if Config.global_pyright_config ~= nil then
+			config_target = Config.global_pyright_config
+		end
 		require("py-bazel.config").set_local_config(config, config_target)
 	else
 		log.info("This does not appear to be a bazel project")
